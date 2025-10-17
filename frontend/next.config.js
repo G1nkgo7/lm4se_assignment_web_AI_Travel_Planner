@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const API_PROXY_TARGET = process.env.API_PROXY_TARGET ?? "";
+
 const nextConfig = {
   experimental: {
     serverActions: true
@@ -14,6 +16,20 @@ const nextConfig = {
         hostname: "*.amap.com"
       }
     ]
+  },
+  async rewrites() {
+    if (!API_PROXY_TARGET) {
+      return [];
+    }
+
+    const target = API_PROXY_TARGET.replace(/\/$/, "");
+
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${target}/api/:path*`
+      }
+    ];
   }
 };
 

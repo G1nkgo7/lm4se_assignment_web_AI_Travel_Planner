@@ -1,3 +1,7 @@
+import { z } from "zod";
+import { config } from "../config";
+import type { ChatMessage } from "./llm-client";
+import { runChatCompletion } from "./llm-client";
 import type { ItineraryActivity, ItineraryDay, ItineraryPlan, TravelPreferences } from "../types/travel";
 
 const INTEREST_ACTIVITY_BANK: Record<
@@ -246,7 +250,133 @@ function createBudgetBreakdown(preferences: TravelPreferences): ItineraryPlan["e
   });
 }
 
-export async function generateItinerary(preferences: TravelPreferences): Promise<ItineraryPlan> {
+function buildDateSequence(start: Date, length: number): string[] {
+  return Array.from({ length }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return formatDate(date);
+  });
+}
+
+const itineraryPlanSchema = z.object({
+  title: z.string().min(1),
+  overview: z.string().min(1),
+  days: z
+    .array(
+      z.object({
+        date: z.string().min(1),
+        summary: z.string().min(1),
+        activities: z
+          .array(
+            z.object({
+              time: z.string().min(1),
+              title: z.string().min(1),
+              description: z.string().min(1),
+              location: z.string().optional(),
+              budget: z.coerce.number().min(0).optional()
+            })
+          )
+          .min(1)
+      })
+    )
+    .min(1),
+  expenses: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        planned: z.coerce.number().min(0),
+        actual: z.coerce.number().min(0)
+      })
+    )
+    .min(1)
+});
+
+function shouldUseLLM(): boolean {
+  return config.llm.provider !== "mock" && Boolean(config.llm.apiKey);
+}
+
+function stripMarkdownFence(content: string): string {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("```")) {
+    const match = /```(?:json)?([\s\S]*?)```/i.exec(trimmed);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+  return trimmed;
+}
+
+function buildLLMMessages(preferences: TravelPreferences): ChatMessage[] {
+  const { start, days } = calculateTripDays(preferences);
+  const dateSequence = buildDateSequence(start, days);
+  const totalBudget = preferences.budget > 0 ? preferences.budget : preferences.travelers * 600;
+
+  const systemPrompt = [
+    "You are an experienced Chinese travel consultant.",
+    "Return thoughtful multi-day itineraries tailored to the traveller's goals.",
+    "Only reply with valid JSON matching the specified schema; do not include markdown fences or commentary.",
+    "Costs should be realistic for a Chinese traveller and can be approximations.",
+    "Dates must use YYYY-MM-DD format from the provided sequence."
+  ].join(" ");
+
+  const userPayload = {
+    preferences: {
+      destination: preferences.destination,
+      startDate: preferences.startDate ?? dateSequence[0],
+      endDate: preferences.endDate ?? dateSequence[dateSequence.length - 1],
+      days,
+      travelers: preferences.travelers,
+      budget: totalBudget,
+      interests: preferences.interests,
+      notes: preferences.notes ?? ""
+    },
+    dateSequence,
+    requirements: {
+      jsonSchema: {
+        title: "string",
+        overview: "string",
+        days: [
+          {
+            date: "YYYY-MM-DD",
+            summary: "string",
+            activities: [
+              {
+                time: "string",
+                title: "string",
+                description: "string",
+                location: "string?",
+                budget: "number?"
+              }
+            ]
+          }
+        ],
+        expenses: [
+          {
+            name: "string",
+            planned: "number",
+            actual: "number"
+          }
+        ]
+      },
+      budgetGuidance: {
+        totalBudget,
+        categories: ["交通", "住宿", "餐饮", "活动"],
+        currency: "CNY"
+      },
+      narrativeTone: "Use concise Chinese suitable for travellers; highlight unique experiences."
+    }
+  };
+
+  return [
+    { role: "system", content: systemPrompt },
+    {
+      role: "user",
+      content: `根据以下旅行偏好生成行程规划，请仅返回JSON：\n${JSON.stringify(userPayload)}`
+    }
+  ];
+}
+
+function generateFallbackItinerary(preferences: TravelPreferences): ItineraryPlan {
   const days = buildItineraryDays(preferences);
   const expenses = createBudgetBreakdown(preferences);
 
@@ -262,4 +392,22 @@ export async function generateItinerary(preferences: TravelPreferences): Promise
     days,
     expenses
   };
+}
+
+export async function generateItinerary(preferences: TravelPreferences): Promise<ItineraryPlan> {
+  if (!shouldUseLLM()) {
+    return generateFallbackItinerary(preferences);
+  }
+
+  try {
+    const messages = buildLLMMessages(preferences);
+    const raw = await runChatCompletion(messages);
+    const jsonString = stripMarkdownFence(raw);
+    const parsed = JSON.parse(jsonString);
+    const plan = itineraryPlanSchema.parse(parsed);
+    return plan;
+  } catch (error) {
+    console.error("LLM 行程生成失败，使用本地备选方案", error);
+    return generateFallbackItinerary(preferences);
+  }
 }

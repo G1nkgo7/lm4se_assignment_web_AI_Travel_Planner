@@ -19,7 +19,8 @@ export const config = {
   llm: {
     provider: readEnv("LLM_PROVIDER", "mock"),
     apiKey: process.env.LLM_API_KEY ?? "",
-    model: process.env.LLM_MODEL ?? "gpt-4o"
+    model: process.env.LLM_MODEL ?? "qwen-turbo",
+    apiBaseUrl: readEnv("LLM_API_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")
   },
   mapApiKey: process.env.MAP_API_KEY ?? "",
   speechApiKey: process.env.SPEECH_API_KEY ?? "",
