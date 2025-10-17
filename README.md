@@ -99,10 +99,42 @@ travel-planner/
 
    为简化早期开发，可优先使用云端 Supabase 项目；若需要本地 Postgres，可在后续添加 docker-compose 服务。
 
-4. **Docker 方式运行**（初步支持，后续完善）
+4. **Docker 方式运行**
+   - 本地构建：
+     ```bash
+     docker compose up --build
+     ```
+   - 拉取预构建镜像（需先完成下文阿里云镜像推送配置）：
+     ```bash
+     export ACR_SERVER=<your-acr-server>
+     export ACR_NAMESPACE=<your-namespace>
+     docker pull "$ACR_SERVER/$ACR_NAMESPACE/travel-planner-backend:latest"
+     docker pull "$ACR_SERVER/$ACR_NAMESPACE/travel-planner-frontend:latest"
+     docker compose -f docker-compose.yml up -d
+     ```
+
+   默认 `docker-compose.yml` 会首选本地构建产物；若要强制使用远程镜像，可将 `backend` 与 `frontend` 服务的 `build` 配置注释掉，并新增对应 `image` 字段。
+
+## GitHub Actions 推送阿里云镜像
+
+1. 在 GitHub 仓库 `Settings > Secrets and variables > Actions` 中新增以下 Secrets：
+   - `ALIYUN_REGISTRY_SERVER`：如 `registry.cn-hangzhou.aliyuncs.com`
+   - `ALIYUN_REGISTRY_NAMESPACE`：阿里云镜像命名空间，例如 `travel`
+   - `ALIYUN_REGISTRY_USERNAME`：阿里云镜像仓库用户名（通常是阿里云账号 ID）
+   - `ALIYUN_REGISTRY_PASSWORD`：上方账号对应的访问密码或临时令牌
+
+2. 推送到 `main` 分支或手动触发 `Build and Push Docker Images` workflow，GitHub Actions 会：
+   - 构建 `infra/Dockerfile.backend` 与 `infra/Dockerfile.frontend`
+   - 以 `latest` 与提交 `SHA` 双标签推送到 `$ALIYUN_REGISTRY_SERVER/$ALIYUN_REGISTRY_NAMESPACE`
+
+3. 成功后可通过如下命令验证：
    ```bash
-   docker compose up --build
+   docker login $ALIYUN_REGISTRY_SERVER -u "$ALIYUN_REGISTRY_USERNAME"
+   docker pull $ALIYUN_REGISTRY_SERVER/$ALIYUN_REGISTRY_NAMESPACE/travel-planner-backend:latest
+   docker pull $ALIYUN_REGISTRY_SERVER/$ALIYUN_REGISTRY_NAMESPACE/travel-planner-frontend:latest
    ```
+
+如需自定义标签，可在工作流的 `workflow_dispatch` 对话框中填写 `image_tag`，或给仓库创建 Git 标签；工作流会自动使用标签名覆盖默认的 `latest`。
 
 ## 里程碑规划
 

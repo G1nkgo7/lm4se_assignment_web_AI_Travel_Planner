@@ -1,0 +1,75 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional tag to use instead of latest"
+        required: false
+        default: ""
+
+env:
+  BACKEND_DOCKERFILE: infra/Dockerfile.backend
+  FRONTEND_DOCKERFILE: infra/Dockerfile.frontend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Define image tags
+        id: vars
+        run: |
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="latest"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Aliyun Container Registry (ACR)
+        env:
+          ACR_SERVER: ${{ secrets.ALIYUN_REGISTRY_SERVER }}
+          ACR_USERNAME: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+        run: |
+          if [ -z "$ACR_SERVER" ] || [ -z "$ACR_USERNAME" ] || [ -z "$ACR_PASSWORD" ]; then
+            echo "Aliyun registry secrets are not configured." >&2
+            exit 1
+          fi
+          echo "$ACR_PASSWORD" | docker login "$ACR_SERVER" -u "$ACR_USERNAME" --password-stdin
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ${{ env.BACKEND_DOCKERFILE }}
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ secrets.ALIYUN_REGISTRY_SERVER }}/${{ secrets.ALIYUN_REGISTRY_NAMESPACE }}/travel-planner-backend:${{ steps.vars.outputs.tag }}
+            ${{ secrets.ALIYUN_REGISTRY_SERVER }}/${{ secrets.ALIYUN_REGISTRY_NAMESPACE }}/travel-planner-backend:${{ steps.vars.outputs.sha }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ${{ env.FRONTEND_DOCKERFILE }}
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ secrets.ALIYUN_REGISTRY_SERVER }}/${{ secrets.ALIYUN_REGISTRY_NAMESPACE }}/travel-planner-frontend:${{ steps.vars.outputs.tag }}
+            ${{ secrets.ALIYUN_REGISTRY_SERVER }}/${{ secrets.ALIYUN_REGISTRY_NAMESPACE }}/travel-planner-frontend:${{ steps.vars.outputs.sha }}
