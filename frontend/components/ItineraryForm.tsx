@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChangeEvent, FocusEvent, FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TravelPreferences } from "@/lib/types";
 import { VoiceRecorder } from "./VoiceRecorder";
 
@@ -9,6 +9,7 @@ interface ItineraryFormProps {
   onSubmit: (preferences: TravelPreferences) => Promise<void>;
   loading: boolean;
   onDestinationBlur?: (destination: string) => void;
+  initialPreferences?: TravelPreferences | null;
 }
 
 interface FormState {
@@ -61,9 +62,33 @@ const defaultState: FormState = {
   notes: ""
 };
 
-export function ItineraryForm({ onSubmit, loading, onDestinationBlur }: ItineraryFormProps) {
+function preferencesToFormState(preferences: TravelPreferences): FormState {
+  return {
+    destination: preferences.destination,
+    startDate: preferences.startDate,
+    endDate: preferences.endDate,
+    budget: String(preferences.budget ?? 0),
+    travelers: String(preferences.travelers ?? 1),
+    interests: preferences.interests ?? [],
+    notes: preferences.notes ?? ""
+  };
+}
+
+export function ItineraryForm({
+  onSubmit,
+  loading,
+  onDestinationBlur,
+  initialPreferences
+}: ItineraryFormProps) {
   const [form, setForm] = useState<FormState>(defaultState);
   const [voiceTranscript, setVoiceTranscript] = useState("");
+
+  useEffect(() => {
+    if (!initialPreferences) {
+      return;
+    }
+    setForm(preferencesToFormState(initialPreferences));
+  }, [initialPreferences]);
 
   const updateField = (key: Exclude<keyof FormState, "interests">, value: string) => {
     setForm((prev: FormState) => {

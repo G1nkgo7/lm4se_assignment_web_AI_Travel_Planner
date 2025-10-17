@@ -215,11 +215,14 @@ function buildItineraryDays(preferences: TravelPreferences): ItineraryDay[] {
   for (let i = 0; i < days; i += 1) {
     const date = new Date(start);
     date.setDate(start.getDate() + i);
+    const activities = buildDailyActivities(preferences, i, days);
+    const estimatedCost = activities.reduce((sum, activity) => sum + (activity.budget ?? 0), 0);
 
     result.push({
       date: formatDate(date),
       summary: `${preferences.destination} 第 ${i + 1} 天亮点`,
-      activities: buildDailyActivities(preferences, i, days)
+      activities,
+      estimatedCost: estimatedCost > 0 ? Math.round(estimatedCost) : undefined
     });
   }
 
@@ -250,6 +253,23 @@ function createBudgetBreakdown(preferences: TravelPreferences): ItineraryPlan["e
   });
 }
 
+function enrichDailyEstimates(plan: ItineraryPlan): ItineraryPlan {
+  const days = plan.days.map(day => {
+    const total = day.activities.reduce((sum, activity) => sum + (activity.budget ?? 0), 0);
+    const normalized = typeof day.estimatedCost === "number" && !Number.isNaN(day.estimatedCost)
+      ? Math.round(day.estimatedCost)
+      : undefined;
+    const fallback = total > 0 ? Math.round(total) : undefined;
+
+    return {
+      ...day,
+      estimatedCost: normalized ?? fallback
+    };
+  });
+
+  return { ...plan, days };
+}
+
 function buildDateSequence(start: Date, length: number): string[] {
   return Array.from({ length }, (_, index) => {
     const date = new Date(start);
@@ -258,7 +278,7 @@ function buildDateSequence(start: Date, length: number): string[] {
   });
 }
 
-const itineraryPlanSchema = z.object({
+export const itineraryPlanSchema = z.object({
   title: z.string().min(1),
   overview: z.string().min(1),
   days: z
@@ -276,7 +296,8 @@ const itineraryPlanSchema = z.object({
               budget: z.coerce.number().min(0).optional()
             })
           )
-          .min(1)
+          .min(1),
+        estimatedCost: z.coerce.number().min(0).optional()
       })
     )
     .min(1),
@@ -316,6 +337,7 @@ function buildLLMMessages(preferences: TravelPreferences): ChatMessage[] {
     "Return thoughtful multi-day itineraries tailored to the traveller's goals.",
     "Only reply with valid JSON matching the specified schema; do not include markdown fences or commentary.",
     "Costs should be realistic for a Chinese traveller and can be approximations.",
+    "For each day include an estimatedCost field that sums the key expenses for that day.",
     "Dates must use YYYY-MM-DD format from the provided sequence."
   ].join(" ");
 
@@ -347,7 +369,8 @@ function buildLLMMessages(preferences: TravelPreferences): ChatMessage[] {
                 location: "string?",
                 budget: "number?"
               }
-            ]
+            ],
+            estimatedCost: "number?"
           }
         ],
         expenses: [
@@ -386,12 +409,12 @@ function generateFallbackItinerary(preferences: TravelPreferences): ItineraryPla
     preferences.notes ? `补充需求：${preferences.notes}` : ""
   ].filter(Boolean);
 
-  return {
+  return enrichDailyEstimates({
     title: `${preferences.destination} ${days.length} 日行程规划`,
     overview: overviewParts.join(" "),
     days,
     expenses
-  };
+  });
 }
 
 export async function generateItinerary(preferences: TravelPreferences): Promise<ItineraryPlan> {
@@ -405,7 +428,7 @@ export async function generateItinerary(preferences: TravelPreferences): Promise
     const jsonString = stripMarkdownFence(raw);
     const parsed = JSON.parse(jsonString);
     const plan = itineraryPlanSchema.parse(parsed);
-    return plan;
+    return enrichDailyEstimates(plan);
   } catch (error) {
     console.error("LLM 行程生成失败，使用本地备选方案", error);
     return generateFallbackItinerary(preferences);

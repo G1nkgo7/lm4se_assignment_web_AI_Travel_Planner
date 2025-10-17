@@ -21,6 +21,7 @@ export interface ItineraryDay {
   date: string;
   summary: string;
   activities: ItineraryActivity[];
+  estimatedCost?: number;
 }
 
 export interface ExpenseCategory {
@@ -34,4 +35,15 @@ export interface ItineraryPlan {
   overview: string;
   days: ItineraryDay[];
   expenses: ExpenseCategory[];
+}
+
+export interface StoredTravelPlan {
+  id: string;
+  userId: string;
+  title: string;
+  overview: string;
+  plan: ItineraryPlan;
+  preferences: TravelPreferences;
+  createdAt: string;
+  updatedAt: string;
 }

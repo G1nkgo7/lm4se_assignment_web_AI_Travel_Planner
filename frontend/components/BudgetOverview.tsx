@@ -36,7 +36,13 @@ export function BudgetOverview({ expenses }: BudgetOverviewProps) {
             <span>
               ¥{item.actual} / ¥{item.planned}
               <span className="ml-2 text-xs text-slate-500">
-                {Math.round(((item.actual - item.planned) / item.planned) * 100)}%
+                {(() => {
+                  if (item.planned <= 0) {
+                    return item.actual > 0 ? "超出预算" : "--";
+                  }
+                  const diffPercent = ((item.actual - item.planned) / item.planned) * 100;
+                  return `${Math.round(diffPercent)}%`;
+                })()}
               </span>
             </span>
           </li>

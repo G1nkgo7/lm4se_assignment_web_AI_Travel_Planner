@@ -3,8 +3,15 @@
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 
+interface MapFocusTarget {
+  name: string;
+  address?: string;
+  time?: string;
+}
+
 interface MapPlaceholderProps {
   destination?: string;
+  focus?: MapFocusTarget | null;
 }
 
 const DEFAULT_CENTER: [number, number] = [116.397389, 39.908722];
@@ -52,10 +59,13 @@ function waitForAmap(retry = 20): Promise<any> {
   });
 }
 
-export function MapPlaceholder({ destination }: MapPlaceholderProps) {
+export function MapPlaceholder({ destination, focus }: MapPlaceholderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
+  const geocoderRef = useRef<any>(null);
+  const inFlightRequest = useRef<number>(0);
+  const inFlightTimeout = useRef<number | null>(null);
 
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [status, setStatus] = useState<MapStatus>("idle");
@@ -74,6 +84,11 @@ export function MapPlaceholder({ destination }: MapPlaceholderProps) {
     const initMap = async () => {
       setStatus("loading");
       setMessage("正在准备地图数据...");
+      inFlightRequest.current += 1;
+      if (inFlightTimeout.current) {
+        window.clearTimeout(inFlightTimeout.current);
+        inFlightTimeout.current = null;
+      }
 
       try {
         const amap = await waitForAmap();
@@ -96,7 +111,7 @@ export function MapPlaceholder({ destination }: MapPlaceholderProps) {
         mapRef.current = map;
         markerRef.current = marker;
 
-        if (!destination) {
+        if (!destination && !focus) {
           setStatus("ready");
           setMessage("选择目的地后可查看精准位置和路线建议。");
         }
@@ -115,6 +130,12 @@ export function MapPlaceholder({ destination }: MapPlaceholderProps) {
       mapRef.current?.destroy();
       mapRef.current = null;
       markerRef.current = null;
+      geocoderRef.current = null;
+      if (inFlightTimeout.current) {
+        window.clearTimeout(inFlightTimeout.current);
+        inFlightTimeout.current = null;
+      }
+      inFlightRequest.current = 0;
     };
   }, [scriptLoaded]);
 
@@ -131,9 +152,16 @@ export function MapPlaceholder({ destination }: MapPlaceholderProps) {
       return;
     }
 
-    const target = destination?.trim();
+    const targetName = focus?.name?.trim();
+    const targetAddress = focus?.address?.trim();
+    const target = targetAddress || targetName || destination?.trim();
 
     if (!target) {
+      if (inFlightTimeout.current) {
+        window.clearTimeout(inFlightTimeout.current);
+        inFlightTimeout.current = null;
+      }
+      inFlightRequest.current += 1;
       map.setCenter(DEFAULT_CENTER);
       marker.setPosition(DEFAULT_CENTER);
       setStatus("ready");
@@ -142,11 +170,34 @@ export function MapPlaceholder({ destination }: MapPlaceholderProps) {
     }
 
     setStatus("loading");
-    setMessage(`正在根据目的地加载地图：${target}`);
+    if (focus) {
+      const label = targetName ?? targetAddress ?? target;
+      const timeLabel = focus.time ? `${focus.time} · ` : "";
+      setMessage(`正在定位：${timeLabel}${label}`);
+    } else {
+      setMessage(`正在根据目的地加载地图：${target}`);
+    }
+    inFlightRequest.current += 1;
+    const requestId = inFlightRequest.current;
+
+    const clearExistingTimeout = () => {
+      if (inFlightTimeout.current) {
+        window.clearTimeout(inFlightTimeout.current);
+        inFlightTimeout.current = null;
+      }
+    };
 
     amap.plugin("AMap.Geocoder", () => {
-      const geocoder = new amap.Geocoder();
-      const timeoutId = window.setTimeout(() => {
+      if (!geocoderRef.current) {
+        geocoderRef.current = new amap.Geocoder();
+      }
+
+      const geocoder = geocoderRef.current;
+      clearExistingTimeout();
+      inFlightTimeout.current = window.setTimeout(() => {
+        if (requestId !== inFlightRequest.current) {
+          return;
+        }
         map.setCenter(DEFAULT_CENTER);
         marker.setPosition(DEFAULT_CENTER);
         setStatus("error");
@@ -154,19 +205,31 @@ export function MapPlaceholder({ destination }: MapPlaceholderProps) {
       }, 8000);
 
       geocoder.getLocation(target, (statusCode: string, result: any) => {
-        window.clearTimeout(timeoutId);
+        if (requestId !== inFlightRequest.current) {
+          return;
+        }
+
+        clearExistingTimeout();
 
         if (statusCode === "complete" && result?.geocodes?.length) {
           const { location, formattedAddress } = result.geocodes[0];
           const position = normalizeLngLat(location);
 
-          map.setZoom(12);
+          if (focus) {
+            map.setZoom(15);
+          } else {
+            map.setZoom(12);
+          }
           map.setCenter(position);
           marker.setPosition(position);
           marker.setTitle(formattedAddress ?? target);
 
           setStatus("ready");
-          setMessage(null);
+          if (focus) {
+            setMessage(`${focus.name}${focus.time ? ` · ${focus.time}` : ""}`);
+          } else {
+            setMessage(null);
+          }
           return;
         }
 
@@ -177,30 +240,42 @@ export function MapPlaceholder({ destination }: MapPlaceholderProps) {
           });
 
           district.search(target, (dsStatus: string, dsResult: any) => {
+            if (requestId !== inFlightRequest.current) {
+              return;
+            }
+
             if (dsStatus === "complete" && dsResult?.districtList?.length) {
               const { center, level, name } = dsResult.districtList[0];
               const position = normalizeLngLat(center);
               const zoomLevel = level === "province" ? 8 : level === "city" ? 10 : 12;
 
-              map.setZoom(zoomLevel);
+              map.setZoom(focus ? Math.max(zoomLevel, 13) : zoomLevel);
               map.setCenter(position);
               marker.setPosition(position);
               marker.setTitle(name ?? target);
 
               setStatus("ready");
-              setMessage("已定位至行政区域中心，可进一步选择具体景点。");
+              if (focus) {
+                setMessage(`${focus.name}${focus.time ? ` · ${focus.time}` : ""}`);
+              } else {
+                setMessage("已定位至行政区域中心，可进一步选择具体景点。");
+              }
               return;
             }
 
             map.setCenter(DEFAULT_PROVINCE);
             marker.setPosition(DEFAULT_PROVINCE);
             setStatus("ready");
-            setMessage("未能解析目的地坐标，已显示默认地图。");
+            setMessage(
+              focus
+                ? "未能解析该活动位置，已回退至默认地点。"
+                : "未能解析目的地坐标，已显示默认地图。"
+            );
           });
         });
       });
     });
-  }, [destination, scriptLoaded]);
+  }, [destination, focus, scriptLoaded]);
 
   return (
     <div className="relative h-72 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">

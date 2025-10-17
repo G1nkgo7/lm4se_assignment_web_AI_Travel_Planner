@@ -53,13 +53,35 @@ travel-planner/
    cd travel-planner
    ```
 
-2. **复制环境变量模板**
-   ```bash
-   cp .env.example .env
-   ```
-   根据 README 或设置页面说明，填入 Supabase、地图、语音、大模型等密钥。请勿在仓库中提交真实密钥。
+2. **配置环境变量**
+   - 参考 `.env.example` 的字段，将公共变量分别填入 `frontend/.env` 与 `backend/.env`。
+   - 根据 README 或设置页面说明，填入 Supabase、地图、语音、大模型等密钥。请勿在仓库中提交真实密钥。
 
    若在高德开放平台开启了“安全密钥”校验，请将 `NEXT_PUBLIC_AMAP_SECURITY_CODE` 也填入，对应值可在控制台查看。
+
+    Supabase 方案建议创建以下表结构（可在 SQL Editor 中执行）：
+
+    ```sql
+    create table if not exists public.travel_plans (
+       id uuid primary key default gen_random_uuid(),
+       user_id uuid not null references auth.users(id) on delete cascade,
+       title text not null,
+       overview text not null,
+       plan jsonb not null,
+       preferences jsonb not null,
+       created_at timestamptz not null default now(),
+       updated_at timestamptz not null default now()
+    );
+
+    create index if not exists travel_plans_user_id_idx on public.travel_plans(user_id);
+
+    create trigger sync_updated_at
+       before update on public.travel_plans
+       for each row execute function moddatetime(updated_at);
+    ```
+
+    后端使用 `SUPABASE_SERVICE_ROLE_KEY` 写入行程数据，前端使用 `NEXT_PUBLIC_SUPABASE_ANON_KEY` 完成用户注册与登录。
+    如提示缺少 `moddatetime`，可先执行 `create extension if not exists moddatetime schema extensions;`。
 
 3. **启动前后端（本地开发模式）**
    - 前端 (`frontend/`)

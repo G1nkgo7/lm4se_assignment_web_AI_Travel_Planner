@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { generateItinerary } from "../services/itinerary-service";
 
-const requestSchema = z.object({
+export const itineraryRequestSchema = z.object({
   preferences: z.object({
     destination: z.string().min(1),
     startDate: z.string().optional(),
@@ -20,7 +20,7 @@ export const itineraryRouter = Router();
 
 itineraryRouter.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const payload = requestSchema.parse(req.body);
+    const payload = itineraryRequestSchema.parse(req.body);
     const plan = await generateItinerary(payload.preferences);
     res.json(plan);
   } catch (error) {
