@@ -1,166 +1,80 @@
 # Web 版 AI 旅行规划师
 
-本项目旨在打造一个支持语音与文本交互的智能旅行规划平台，利用大语言模型生成个性化行程、预算分析与实时辅助，配合地图与云端同步服务，帮助用户快速制定旅行方案。
+面向中文旅客的智能行程助手，融合语音输入、地图检索、预算提示与大模型行程生成。前端使用 Next.js，后端基于 Express，支持容器化部署。
 
-## 目录结构
+## 功能亮点
+- 一键生成目的地行程，支持自定义预算和偏好
+- 与高德地图联动，展示重点景点与路线
+- Scenic 图库 + 百度图片搜索，自动匹配目的地风光图
+- Supabase 存储行程，前后端完全分离可独立扩展
 
+## 项目结构
 ```
 travel-planner/
-├── README.md
+├── frontend/     # Next.js 应用
+├── backend/      # Express + TypeScript API
+├── infra/        # Dockerfile 与部署脚本
+├── docs/         # 架构与需求文档
 ├── docker-compose.yml
-├── docs/
-│   ├── ARCHITECTURE.md
-│   └── REQUIREMENTS.md
-├── frontend/
-│   ├── app/
-│   ├── components/
-│   ├── lib/
-│   └── public/
-├── backend/
-│   └── src/
-├── infra/
-│   ├── Dockerfile.frontend
-│   └── Dockerfile.backend
-├── .env.example
-└── .gitignore
+└── .env.example
 ```
 
-## 核心能力规划
+## 快速开始（本地开发）
+1. 安装依赖
+   ```bash
+   npm install --prefix backend
+   npm install --prefix frontend
+   ```
+2. 复制环境变量模板并按需填写
+   ```bash
+   cp .env.example backend/.env
+   cp .env.example frontend/.env.local
+   ```
+3. 分别启动后端与前端
+   ```bash
+   npm run dev --prefix backend
+   npm run dev --prefix frontend
+   ```
+   默认端口：前端 `3000`，后端 `3001`。如需代理，在前端 `.env.local` 中设置 `API_PROXY_TARGET=http://localhost:3001`。
 
-- **智能行程规划**：用户通过语音或文本输入目的地、时间、预算与偏好，后端调用大模型生成交通、住宿、景点与餐饮建议。
-- **费用预算与管理**：自动给出预算分配并支持语音记账，前端图表展示实际开销与差异。
-- **用户与数据管理**：基于 Supabase/Firebase 提供注册登录、行程存档、偏好配置与多端同步。
-- **地图与导航**：整合高德/百度地图 API 展示路线，支持地点检索、路径规划与周边推荐。
-- **实时辅助**：行程共享、实时协同、推送提醒，并预留后续扩展实时翻译与本地服务推荐。
+### 核心环境变量
+| 作用域 | 变量 | 用途 |
+| --- | --- | --- |
+| 前端 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 项目地址 |
+| 前端 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase 匿名 Key |
+| 前端 | `NEXT_PUBLIC_AMAP_JS_KEY` | 高德 JS Key（配合可选 `NEXT_PUBLIC_AMAP_SECURITY_CODE`） |
+| 前端 | `NEXT_PUBLIC_API_BASE_URL` | API 基础路径，容器内通常为 `/api` |
+| 后端 | `SUPABASE_PROJECT_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 服务访问 |
+| 后端 | `LLM_PROVIDER` / `LLM_API_KEY` / `LLM_MODEL` | 大模型配置 |
+| 后端 | `MAP_API_KEY` | 高德 Web 服务 Key |
 
-## 技术选型
+其余变量请参考 `.env.example`。切勿提交任何 `.env` 文件。
 
-| 模块 | 方案 |
+## 容器部署
+```bash
+docker compose up --build
+```
+上述命令使用 `infra/Dockerfile.*` 构建前后端镜像，读取 `frontend/.env.local` 与 `backend/.env`。若使用远程镜像，可在根目录创建 `.env.release` 指定 `BACKEND_IMAGE` 与 `FRONTEND_IMAGE`，并通过 `--env-file` 注入密钥。
+
+示例（阿里云镜像）：
+```bash
+docker pull <reg>/travel-planner-backend:latest
+docker pull <reg>/travel-planner-frontend:latest
+docker run -d --name travel-backend --env-file backend.env -p 3001:3001 <reg>/travel-planner-backend:latest
+docker run -d --name travel-frontend --env-file frontend.env -e NEXT_PUBLIC_API_BASE_URL=http://travel-backend:3001 -p 3000:3000 <reg>/travel-planner-frontend:latest
+```
+
+## 技术栈
+| 模块 | 技术 |
 | --- | --- |
-| 前端 | Next.js 14 + React 18 + TypeScript + Tailwind CSS + Zustand/Recoil 状态管理 |
-| 语音 | Web Speech API（浏览器原生）+ 科大讯飞/阿里云语音识别 SDK 作为增强 |
-| 地图 | 高德地图 JS API（需配置 Web Key 与 securityJsCode，可扩展后端代理保护密钥） |
-| 后端 | Node.js (Express/NestJS) + TypeScript，结合任务队列处理长耗时行程生成 |
-| 数据 | Supabase（Auth + Postgres + Storage）或 Firebase，可按需求切换 |
-| 大模型 | 可配置 OpenAI、阿里云百炼、DeepSeek 等，支持多模型策略 |
-| 部署 | Docker Compose 本地运行，GitHub Actions 自动构建镜像并推送至阿里云镜像仓库 |
+| 前端 | Next.js 14, React 18, Tailwind CSS, Zustand |
+| 后端 | Express, TypeScript, Supabase SDK |
+| LLM | 默认接入阿里云百炼（可换自建 Qwen） |
+| 地图 | 高德地图 JS SDK + Web 服务 API |
+| 部署 | Docker, Docker Compose, GitHub Actions |
 
-## 快速开始
+## 文档
+- `docs/ARCHITECTURE.md` – 系统架构说明
+- `docs/REQUIREMENTS.md` – 功能需求与验收标准
 
-1. **克隆仓库并进入项目目录**
-   ```bash
-   git clone <your-repo-url>
-   cd travel-planner
-   ```
-
-2. **配置环境变量**
-   - 参考 `.env.example` 的字段，将公共变量分别填入 `frontend/.env` 与 `backend/.env`。
-   - 根据 README 或设置页面说明，填入 Supabase、地图、语音、大模型等密钥。请勿在仓库中提交真实密钥。
-
-   若在高德开放平台开启了“安全密钥”校验，请将 `NEXT_PUBLIC_AMAP_SECURITY_CODE` 也填入，对应值可在控制台查看。
-
-    Supabase 方案建议创建以下表结构（可在 SQL Editor 中执行）：
-
-    ```sql
-    create table if not exists public.travel_plans (
-       id uuid primary key default gen_random_uuid(),
-       user_id uuid not null references auth.users(id) on delete cascade,
-       title text not null,
-       overview text not null,
-       plan jsonb not null,
-       preferences jsonb not null,
-       created_at timestamptz not null default now(),
-       updated_at timestamptz not null default now()
-    );
-
-    create index if not exists travel_plans_user_id_idx on public.travel_plans(user_id);
-
-    create trigger sync_updated_at
-       before update on public.travel_plans
-       for each row execute function moddatetime(updated_at);
-    ```
-
-    后端使用 `SUPABASE_SERVICE_ROLE_KEY` 写入行程数据，前端使用 `NEXT_PUBLIC_SUPABASE_ANON_KEY` 完成用户注册与登录。
-    如提示缺少 `moddatetime`，可先执行 `create extension if not exists moddatetime schema extensions;`。
-
-3. **启动前后端（本地开发模式）**
-   - 前端 (`frontend/`)
-     ```bash
-     cd frontend
-     npm install
-     npm run dev
-     ```
-   - 后端 (`backend/`)
-     ```bash
-     cd backend
-     npm install
-     npm run dev
-     ```
-
-   为简化早期开发，可优先使用云端 Supabase 项目；若需要本地 Postgres，可在后续添加 docker-compose 服务。
-
-4. **Docker 方式运行**
-   - 本地构建：
-     ```bash
-     docker compose up --build
-     ```
-   - 拉取预构建镜像（需先完成下文阿里云镜像推送配置）：
-     ```bash
-     export ACR_SERVER=<your-acr-server>
-     export ACR_NAMESPACE=<your-namespace>
-     docker pull "$ACR_SERVER/$ACR_NAMESPACE/travel-planner-backend:latest"
-     docker pull "$ACR_SERVER/$ACR_NAMESPACE/travel-planner-frontend:latest"
-     docker compose -f docker-compose.yml up -d
-     ```
-
-   默认 `docker-compose.yml` 会首选本地构建产物；若要强制使用远程镜像，可将 `backend` 与 `frontend` 服务的 `build` 配置注释掉，并新增对应 `image` 字段。
-
-## GitHub Actions 推送阿里云镜像
-
-1. 在 GitHub 仓库 `Settings > Secrets and variables > Actions` 中新增以下 Secrets：
-   - `ALIYUN_REGISTRY_SERVER`：如 `registry.cn-hangzhou.aliyuncs.com`
-   - `ALIYUN_REGISTRY_NAMESPACE`：阿里云镜像命名空间，例如 `travel`
-   - `ALIYUN_REGISTRY_USERNAME`：阿里云镜像仓库用户名（通常是阿里云账号 ID）
-   - `ALIYUN_REGISTRY_PASSWORD`：上方账号对应的访问密码或临时令牌
-
-2. 推送到 `main` 分支或手动触发 `Build and Push Docker Images` workflow，GitHub Actions 会：
-   - 构建 `infra/Dockerfile.backend` 与 `infra/Dockerfile.frontend`
-   - 以 `latest` 与提交 `SHA` 双标签推送到 `$ALIYUN_REGISTRY_SERVER/$ALIYUN_REGISTRY_NAMESPACE`
-
-3. 成功后可通过如下命令验证：
-   ```bash
-   docker login $ALIYUN_REGISTRY_SERVER -u "$ALIYUN_REGISTRY_USERNAME"
-   docker pull $ALIYUN_REGISTRY_SERVER/$ALIYUN_REGISTRY_NAMESPACE/travel-planner-backend:latest
-   docker pull $ALIYUN_REGISTRY_SERVER/$ALIYUN_REGISTRY_NAMESPACE/travel-planner-frontend:latest
-   ```
-
-如需自定义标签，可在工作流的 `workflow_dispatch` 对话框中填写 `image_tag`，或给仓库创建 Git 标签；工作流会自动使用标签名覆盖默认的 `latest`。
-
-## 里程碑规划
-
-1. **MVP 骨架**：搭建 Next.js 前端、Express 后端、基础 API 契约、语音与地图 SDK 初始化。
-2. **AI 行程引擎**：实现通用 Prompt 模板、调度 LLM 完成行程生成与预算预估，添加 JSON Schema 校验。
-3. **用户体系**：接入 Supabase Auth、实现行程 CRUD、偏好保存、费用记录与图表展示。
-4. **实时与协同**：加入 Supabase Realtime/WebSocket，实现多端同步与通知提醒。
-5. **部署与运维**：完善 Docker 镜像构建、GitHub Actions CI/CD、监控告警、日志与速率限制。
-6. **交付物整合**：生成包含 GitHub 仓库地址与 README 的 PDF，编写完整操作文档与评测指南。
-
-## 安全要求
-
-- 所有密钥通过 `.env` 或运行时输入管理，前端设置页允许用户自助配置。
-- 提供密钥使用说明；若需提供评测用 key，确保可用期 ≥ 3 个月，并放置在 README 指定区域。
-- 加入日志审计与速率限制，避免滥用第三方 API。
-
-## 文档规划
-
-- `docs/ARCHITECTURE.md`：系统架构、模块交互、时序图与数据流。
-- `docs/REQUIREMENTS.md`：功能清单、用户故事、非功能需求与验收标准。
-- 未来新增部署指南、API 规范、隐私合规文档。
-
-## 下一步
-
-- 在 `frontend/` 与 `backend/` 目录内补充 package.json、基础代码与配置。
-- 撰写 `ARCHITECTURE.md` 与 `REQUIREMENTS.md` 初稿。
-- 设计 LLM Prompt 与地图/语音 API 的集成策略，准备 Mock 数据用于前端联调。
-
-如需调整技术栈或集成方案，请在对应文档中注明并更新 README。
+贡献时请确保密钥未入库，并附带必要的测试说明。
