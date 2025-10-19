@@ -6,6 +6,7 @@ import { generateItinerary } from "../services/itinerary-service";
 export const itineraryRequestSchema = z.object({
   preferences: z.object({
     destination: z.string().min(1),
+    destinationFull: z.string().min(1).optional(),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     days: z.number().min(1),

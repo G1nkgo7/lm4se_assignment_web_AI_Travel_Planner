@@ -1,5 +1,6 @@
 export interface TravelPreferences {
   destination: string;
+  destinationFull?: string;
   startDate?: string;
   endDate?: string;
   days: number;

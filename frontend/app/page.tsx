@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { AuthPanel } from "@/components/AuthPanel";
 import { BudgetOverview } from "@/components/BudgetOverview";
+import { DestinationShowcase } from "@/components/DestinationShowcase";
 import { ItineraryForm } from "@/components/ItineraryForm";
 import { ItineraryPreview } from "@/components/ItineraryPreview";
-import { MapPlaceholder } from "@/components/MapPlaceholder";
 import { SavedPlans } from "@/components/SavedPlans";
 import { deleteJSON, getJSON, postJSON } from "@/lib/api-client";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
@@ -110,6 +110,17 @@ export default function HomePage() {
     setActiveFocus(null);
   };
 
+  const handleActivityFocus = useCallback(
+    (activity: { date: string; time?: string; title: string; location?: string }) => {
+      setActiveFocus({
+        name: activity.title,
+        address: activity.location,
+        time: activity.time
+      });
+    },
+    []
+  );
+
   const handleSavePlan = useCallback(async () => {
     if (!accessToken) {
       setPlansError("请先登录后再保存行程。");
@@ -181,10 +192,12 @@ export default function HomePage() {
     await fetchPlans();
   }, [accessToken, fetchPlans]);
 
+  const resolvedDestination = destination ?? lastPreferences?.destinationFull ?? lastPreferences?.destination;
+
   const hasActivePlan = Boolean(plan && lastPreferences);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-10">
+    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-10 px-6 py-10">
       <header className="space-y-2">
         <p className="text-sm uppercase tracking-wide text-brand">AI Travel Planner</p>
         <h1 className="text-3xl font-bold text-slate-900">智能旅行规划师</h1>
@@ -193,7 +206,14 @@ export default function HomePage() {
         </p>
       </header>
 
-      <section className="grid gap-6 lg:grid-cols-[380px_1fr]">
+      <DestinationShowcase
+        destination={resolvedDestination}
+        plan={plan}
+        focus={activeFocus}
+        onActivitySelect={handleActivityFocus}
+      />
+
+      <section className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="space-y-6">
           <AuthPanel supabase={supabase} session={session} />
           <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -225,16 +245,9 @@ export default function HomePage() {
         </div>
 
         <div className="space-y-6">
-          <MapPlaceholder destination={destination ?? plan?.overview} focus={activeFocus} />
           <ItineraryPreview
             plan={plan}
-            onActivitySelect={activity => {
-              setActiveFocus({
-                name: activity.title,
-                address: activity.location,
-                time: activity.time
-              });
-            }}
+            onActivitySelect={handleActivityFocus}
           />
           <BudgetOverview expenses={plan?.expenses} />
         </div>

@@ -292,7 +292,10 @@ export const itineraryPlanSchema = z.object({
               time: z.string().min(1),
               title: z.string().min(1),
               description: z.string().min(1),
-              location: z.string().optional(),
+              location: z.preprocess(
+                (value) => (value === null || value === "" ? undefined : value),
+                z.string().min(1).optional()
+              ),
               budget: z.coerce.number().min(0).optional()
             })
           )
@@ -331,6 +334,7 @@ function buildLLMMessages(preferences: TravelPreferences): ChatMessage[] {
   const { start, days } = calculateTripDays(preferences);
   const dateSequence = buildDateSequence(start, days);
   const totalBudget = preferences.budget > 0 ? preferences.budget : preferences.travelers * 600;
+  const resolvedDestination = (preferences.destinationFull?.trim() || preferences.destination).trim();
 
   const systemPrompt = [
     "You are an experienced Chinese travel consultant.",
@@ -338,12 +342,14 @@ function buildLLMMessages(preferences: TravelPreferences): ChatMessage[] {
     "Only reply with valid JSON matching the specified schema; do not include markdown fences or commentary.",
     "Costs should be realistic for a Chinese traveller and can be approximations.",
     "For each day include an estimatedCost field that sums the key expenses for that day.",
-    "Dates must use YYYY-MM-DD format from the provided sequence."
+    "Dates must use YYYY-MM-DD format from the provided sequence.",
+    "Use preferences.destination when writing user-facing copy, but reference preferences.fullDestination to understand the broader geographical context."
   ].join(" ");
 
   const userPayload = {
     preferences: {
       destination: preferences.destination,
+      fullDestination: resolvedDestination,
       startDate: preferences.startDate ?? dateSequence[0],
       endDate: preferences.endDate ?? dateSequence[dateSequence.length - 1],
       days,
@@ -386,7 +392,11 @@ function buildLLMMessages(preferences: TravelPreferences): ChatMessage[] {
         categories: ["交通", "住宿", "餐饮", "活动"],
         currency: "CNY"
       },
-      narrativeTone: "Use concise Chinese suitable for travellers; highlight unique experiences."
+      narrativeTone: "Use concise Chinese suitable for travellers; highlight unique experiences.",
+      destinationContext: {
+        displayName: preferences.destination,
+        fullName: resolvedDestination
+      }
     }
   };
 
@@ -424,7 +434,9 @@ export async function generateItinerary(preferences: TravelPreferences): Promise
 
   try {
     const messages = buildLLMMessages(preferences);
+    console.info("[LLM] 请求消息:", JSON.stringify(messages, null, 2));
     const raw = await runChatCompletion(messages);
+    console.info("[LLM] 原始响应:", raw);
     const jsonString = stripMarkdownFence(raw);
     const parsed = JSON.parse(jsonString);
     const plan = itineraryPlanSchema.parse(parsed);

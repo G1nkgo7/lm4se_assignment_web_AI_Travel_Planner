@@ -1,3 +1,5 @@
+README.private.md
+
 # Node
 node_modules/
 npm-debug.log*
@@ -12,11 +14,7 @@ build/
 coverage/
 
 # Env
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env*
 
 # Logs
 logs/

@@ -7,6 +7,7 @@ import { itineraryRouter } from "./routes/itinerary";
 import { expenseRouter } from "./routes/expenses";
 import { healthRouter } from "./routes/health";
 import { plansRouter } from "./routes/plans";
+import { mapsRouter } from "./routes/maps";
 
 const logger = pino({
   transport: {
@@ -27,6 +28,7 @@ app.use("/api/health", healthRouter);
 app.use("/api/itinerary", itineraryRouter);
 app.use("/api/expenses", expenseRouter);
 app.use("/api/plans", plansRouter);
+app.use("/api/maps", mapsRouter);
 
 app.use((req: express.Request, res: express.Response) => {
   res.status(404).json({ message: "未找到对应接口", path: req.path });

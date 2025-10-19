@@ -14,6 +14,14 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "*.amap.com"
+      },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com"
+      },
+      {
+        protocol: "https",
+        hostname: "*.baidu.com"
       }
     ]
   },

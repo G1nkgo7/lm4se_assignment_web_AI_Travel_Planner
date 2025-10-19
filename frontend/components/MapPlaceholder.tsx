@@ -12,6 +12,7 @@ interface MapFocusTarget {
 interface MapPlaceholderProps {
   destination?: string;
   focus?: MapFocusTarget | null;
+  className?: string;
 }
 
 const DEFAULT_CENTER: [number, number] = [116.397389, 39.908722];
@@ -59,7 +60,7 @@ function waitForAmap(retry = 20): Promise<any> {
   });
 }
 
-export function MapPlaceholder({ destination, focus }: MapPlaceholderProps) {
+export function MapPlaceholder({ destination, focus, className }: MapPlaceholderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -277,8 +278,15 @@ export function MapPlaceholder({ destination, focus }: MapPlaceholderProps) {
     });
   }, [destination, focus, scriptLoaded]);
 
+  const containerClass = [
+    "relative overflow-hidden rounded-lg border border-slate-200 bg-slate-100",
+    className || "h-72"
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="relative h-72 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+    <div className={containerClass}>
       {!amapKey ? (
         <div className="flex h-full items-center justify-center text-sm text-slate-500">
           请在 .env 中配置 `NEXT_PUBLIC_AMAP_JS_KEY` 以启用地图。
